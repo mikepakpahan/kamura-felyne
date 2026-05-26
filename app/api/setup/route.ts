@@ -14,23 +14,17 @@ export async function GET() {
       name: "create-lobby",
       description: "Buat sesi lobi mabar Monster Hunter",
       options: [
-        {
-          name: "lobby_id",
-          description: "ID Lobby di dalam game",
-          type: 3, // Tipe 3 artinya input teks (STRING)
-          required: true,
-        },
-        {
-          name: "password",
-          description: "Password Lobby (kosongkan jika tidak ada)",
-          type: 3,
-          required: false,
-        },
+        { name: "lobby_id", description: "ID Lobby di dalam game", type: 3, required: true },
+        { name: "password", description: "Password Lobby (kosongkan jika tidak ada)", type: 3, required: false },
       ],
     },
     {
       name: "submit-build",
       description: "Buka form untuk menyumbang build senjata",
+    },
+    {
+      name: "builder",
+      description: "Dapatkan link website GameCat Armorset Builder",
     },
   ];
 

@@ -15,7 +15,11 @@ function getModalValue(body: any, customId: string): string {
 
 async function getGoogleToken() {
   const clientEmail = process.env.GOOGLE_CLIENT_EMAIL!;
-  const privateKey = process.env.GOOGLE_PRIVATE_KEY!.replace(/\\n/g, "\n");
+  let privateKey = process.env.GOOGLE_PRIVATE_KEY!;
+
+  if (privateKey.startsWith('"') && privateKey.endsWith('"')) privateKey = privateKey.slice(1, -1);
+  privateKey = privateKey.replace(/\\n/g, "\n");
+
   const alg = "RS256";
   const pkcs8 = await importPKCS8(privateKey, alg);
   const jwt = await new SignJWT({
@@ -31,12 +35,10 @@ async function getGoogleToken() {
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt,
-    }),
+    body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: jwt }),
   });
   const data = await res.json();
+  if (!res.ok) throw new Error(`Google Auth Failed: ${JSON.stringify(data)}`);
   return data.access_token;
 }
 
@@ -45,14 +47,10 @@ async function appendToSheet(values: string[]) {
   const token = await getGoogleToken();
   const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Sheet1!A1:append?valueInputOption=USER_ENTERED`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ values: [values] }),
   });
-
-  if (!res.ok) console.error("Gagal simpan ke Sheets:", await res.text());
+  if (!res.ok) throw new Error(`Google Sheets API Error: ${await res.text()}`);
   return res.ok;
 }
 
@@ -61,9 +59,7 @@ export async function POST(req: NextRequest) {
   const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
   const APPROVAL_CHANNEL_ID = process.env.APPROVAL_CHANNEL_ID;
 
-  if (!PUBLIC_KEY || !BOT_TOKEN || !APPROVAL_CHANNEL_ID) {
-    return new Response("Internal Configuration Error", { status: 500 });
-  }
+  if (!PUBLIC_KEY || !BOT_TOKEN || !APPROVAL_CHANNEL_ID) return new Response("Config Error", { status: 500 });
 
   const signature = req.headers.get("x-signature-ed25519") || "";
   const timestamp = req.headers.get("x-signature-timestamp") || "";
@@ -75,15 +71,30 @@ export async function POST(req: NextRequest) {
 
   const body = JSON.parse(rawBody);
 
-  // --- 1. BALAS PING ---
-  if (body.type === 1) {
-    return new Response(JSON.stringify({ type: 1 }), { status: 200, headers: { "Content-Type": "application/json" } });
-  }
+  if (body.type === 1) return new Response(JSON.stringify({ type: 1 }), { status: 200, headers: { "Content-Type": "application/json" } });
 
-  // --- 2. TANGANI SLASH COMMANDS ---
   if (body.type === 2) {
     const commandName = body.data.name;
     const username = body.member?.user?.username || "Hunter";
+
+    // --- COMMAND BARU: /builder ---
+    if (commandName === "builder") {
+      return new Response(
+        JSON.stringify({
+          type: 4,
+          data: {
+            embeds: [
+              {
+                title: "🛠️ GameCat Armorset Builder",
+                description: "Gunakan website ini untuk merakit armor tanpa batas dan mendapatkan kode **Encoding**-nya.\n\n🔗 **[Klik di sini untuk buka GameCat](https://gamecat.fun/e/#xxxxxs2OxYuux)**",
+                color: 0x00aaff,
+              },
+            ],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
 
     if (commandName === "create-lobby") {
       const options = body.data.options || [];
@@ -119,13 +130,16 @@ export async function POST(req: NextRequest) {
           type: 9,
           data: {
             custom_id: "modal_submit_build",
-            title: "Submit Build Senjata MH Rise",
+            title: "Submit Build via Encoding",
             components: [
               { type: 1, components: [{ type: 4, custom_id: "build_name", label: "Nama Build", style: 1, required: true }] },
-              { type: 1, components: [{ type: 4, custom_id: "weapon", label: "Senjata & Augment", style: 1, required: true }] },
-              { type: 1, components: [{ type: 4, custom_id: "armor_talisman", label: "Armor - Talisman & Augment", style: 2, required: true }] },
-              { type: 1, components: [{ type: 4, custom_id: "decoration", label: "Decoration", style: 2, required: true }] },
-              { type: 1, components: [{ type: 4, custom_id: "notes", label: "Catatan / Playstyle", style: 2, required: false }] },
+              { type: 1, components: [{ type: 4, custom_id: "weapon", label: "Jenis Senjata", style: 1, required: true, placeholder: "Contoh: Long Sword" }] },
+              // Menambahkan instruksi dan link di Placeholder
+              {
+                type: 1,
+                components: [{ type: 4, custom_id: "encoding", label: "Build Encoding (Paste di sini)", style: 2, required: true, placeholder: "Buka https://gamecat.fun/e/#xxxxxs2OxYuux lalu copy-paste kode Export-nya ke sini." }],
+              },
+              { type: 1, components: [{ type: 4, custom_id: "notes", label: "Catatan (Opsional)", style: 2, required: false }] },
             ],
           },
         }),
@@ -134,15 +148,13 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // --- 3. TANGANI SUBMIT FORM ---
+  // --- SUBMIT FORM & KLIK TOMBOL (Sama seperti sebelumnya) ---
   if (body.type === 5) {
     if (body.data.custom_id === "modal_submit_build") {
       const username = body.member?.user?.username || "Hunter";
-
       const buildName = getModalValue(body, "build_name");
       const weapon = getModalValue(body, "weapon");
-      const armorTalisman = getModalValue(body, "armor_talisman");
-      const decoration = getModalValue(body, "decoration");
+      const encoding = getModalValue(body, "encoding");
       const notes = getModalValue(body, "notes") || "-";
 
       const discordPayload = {
@@ -152,9 +164,8 @@ export async function POST(req: NextRequest) {
             color: 0xffaa00,
             fields: [
               { name: "Nama Build", value: buildName },
-              { name: "Senjata & Augment", value: weapon },
-              { name: "Armor & Talisman", value: `\`\`\`text\n${armorTalisman}\n\`\`\`` },
-              { name: "Decoration", value: `\`\`\`text\n${decoration}\n\`\`\`` },
+              { name: "Senjata", value: weapon },
+              { name: "Encoding", value: `\`${encoding}\`` },
               { name: "Catatan", value: notes },
             ],
             footer: { text: `Creator: ${username}` },
@@ -181,14 +192,13 @@ export async function POST(req: NextRequest) {
       return new Response(
         JSON.stringify({
           type: 4,
-          data: { flags: 64, content: "✅ Build kamu berhasil dikirim ke Admin untuk diperiksa!" },
+          data: { flags: 64, content: "✅ Build berhasil dikirim. Gunakan /builder jika butuh link GameCat lagi." },
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }
   }
 
-  // --- 4. TANGANI KLIK TOMBOL APPROVE/REJECT ---
   if (body.type === 3) {
     const customId = body.data.custom_id;
     const message = body.message;
@@ -198,39 +208,34 @@ export async function POST(req: NextRequest) {
       const isApproved = customId === "approve_build";
       const creator = embed.footer?.text.replace("Creator: ", "") || "Unknown";
 
-      if (isApproved) {
-        const buildName = embed.fields[0].value;
-        const weapon = embed.fields[1].value;
-        const armorTalisman = embed.fields[2].value
-          .replace(/```text\n?/g, "")
-          .replace(/```/g, "")
-          .trim();
-        const decoration = embed.fields[3].value
-          .replace(/```text\n?/g, "")
-          .replace(/```/g, "")
-          .trim();
-        const notes = embed.fields[4].value;
+      try {
+        if (isApproved) {
+          const buildName = embed.fields[0].value;
+          const weapon = embed.fields[1].value;
+          const encoding = embed.fields[2].value.replace(/`/g, "").trim();
+          const notes = embed.fields[3].value;
+          await appendToSheet([buildName, weapon, encoding, notes, creator]);
+        }
 
-        // Data dikirim ke Sheets sesuai urutan form baru
-        await appendToSheet([buildName, weapon, armorTalisman, decoration, notes, creator]);
+        return new Response(
+          JSON.stringify({
+            type: 7,
+            data: {
+              embeds: [{ ...embed, title: isApproved ? `✅ [APPROVED] Build dari ${creator}` : `❌ [REJECTED] Build dari ${creator}`, color: isApproved ? 0x00ff00 : 0xff0000 }],
+              components: [],
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      } catch (error: any) {
+        return new Response(
+          JSON.stringify({
+            type: 7,
+            data: { embeds: [{ ...embed, title: `💥 Gagal Memproses Tombol`, description: `**Eror:**\n\`${error.message || error}\``, color: 0x990000 }] },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
       }
-
-      const updatedEmbed = {
-        ...embed,
-        title: isApproved ? `✅ [APPROVED] Build dari ${creator}` : `❌ [REJECTED] Build dari ${creator}`,
-        color: isApproved ? 0x00ff00 : 0xff0000,
-      };
-
-      return new Response(
-        JSON.stringify({
-          type: 7,
-          data: {
-            embeds: [updatedEmbed],
-            components: [],
-          },
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
     }
   }
 
