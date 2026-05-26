@@ -83,15 +83,34 @@ export async function POST(req: NextRequest) {
   const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
   const APPROVAL_CHANNEL_ID = process.env.APPROVAL_CHANNEL_ID;
 
-  if (!PUBLIC_KEY || !BOT_TOKEN || !APPROVAL_CHANNEL_ID) return new Response("Config Error", { status: 500 });
+  // PENGAMAN 1: Discord selalu meminta balasan 401 (bukan 500) jika ada masalah dengan sistem keamanan
+  if (!PUBLIC_KEY) return new Response("Missing Public Key", { status: 401 });
 
   const signature = req.headers.get("x-signature-ed25519") || "";
   const timestamp = req.headers.get("x-signature-timestamp") || "";
-  if (!signature || !timestamp) return new Response("Missing headers", { status: 401 });
 
-  const rawBody = await req.text();
-  const isValidRequest = verifyKey(rawBody, signature, timestamp, PUBLIC_KEY);
-  if (!isValidRequest) return new Response("Bad signature", { status: 401 });
+  if (!signature || !timestamp) {
+    return new Response("Missing signature headers", { status: 401 });
+  }
+
+  let rawBody = "";
+  try {
+    rawBody = await req.text();
+    // PENGAMAN 2: Proses validasi utama
+    const isValidRequest = verifyKey(rawBody, signature, timestamp, PUBLIC_KEY);
+    if (!isValidRequest) {
+      return new Response("Bad signature", { status: 401 });
+    }
+  } catch (error) {
+    // PENGAMAN 3: Jika Discord sengaja mengirim payload rusak yang membuat sistem error,
+    // tangkap error-nya di sini dan tetap kembalikan 401!
+    return new Response("Validation Exception", { status: 401 });
+  }
+
+  // Jika kode berhasil lewat dari sini, berarti request 100% aman dan valid dari Discord asli
+  if (!BOT_TOKEN || !APPROVAL_CHANNEL_ID) {
+    return new Response("Internal Configuration Error", { status: 500 });
+  }
 
   const body = JSON.parse(rawBody);
 
