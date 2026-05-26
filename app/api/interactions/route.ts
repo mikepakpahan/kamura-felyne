@@ -2,7 +2,7 @@ import { verifyKey } from "discord-interactions";
 import { NextRequest, NextResponse } from "next/server";
 import { SignJWT, importPKCS8 } from "jose";
 
-export const runtime = "edge";
+// export const runtime = "edge";
 
 function getModalValue(body: any, customId: string): string {
   const components = body.data?.components || [];
@@ -90,7 +90,8 @@ export async function POST(req: NextRequest) {
   let rawBody = "";
   try {
     rawBody = await req.text();
-    const isValidRequest = verifyKey(rawBody, signature, timestamp, PUBLIC_KEY);
+    const isValidRequest = await verifyKey(rawBody, signature, timestamp, PUBLIC_KEY);
+
     if (!isValidRequest) {
       return NextResponse.json({ error: "Bad signature" }, { status: 401 });
     }
