@@ -2,7 +2,8 @@ import { verifyKey } from "discord-interactions";
 import { NextRequest, NextResponse } from "next/server";
 import { SignJWT, importPKCS8 } from "jose";
 
-// export const runtime = "edge";
+export const runtime = "edge";
+export const dynamic = "force-dynamic";
 
 function getModalValue(body: any, customId: string): string {
   const components = body.data?.components || [];
@@ -90,8 +91,8 @@ export async function POST(req: NextRequest) {
   let rawBody = "";
   try {
     rawBody = await req.text();
+    // PERBAIKAN DARI KAMU
     const isValidRequest = await verifyKey(rawBody, signature, timestamp, PUBLIC_KEY);
-
     if (!isValidRequest) {
       return NextResponse.json({ error: "Bad signature" }, { status: 401 });
     }
@@ -102,14 +103,11 @@ export async function POST(req: NextRequest) {
   const body = JSON.parse(rawBody);
 
   // --- 1. BALAS PING ---
-  if (body.type === 1) {
-    console.log(">>> PING BERHASIL DITERIMA DAN DIBALAS");
-    return NextResponse.json({ type: 1 });
-  }
+  if (body.type === 1) return NextResponse.json({ type: 1 });
 
-  // Cek konfigurasi internal setelah Ping lolos
   if (!BOT_TOKEN || !APPROVAL_CHANNEL_ID) return NextResponse.json({ error: "Config Error" }, { status: 500 });
 
+  // --- 2. TANGANI SLASH COMMANDS ---
   if (body.type === 2) {
     const commandName = body.data.name;
     const username = body.member?.user?.username || "Hunter";
@@ -147,6 +145,31 @@ export async function POST(req: NextRequest) {
     }
 
     if (commandName === "create-lobby") {
+      // 1. CEK LOBI GANDA SEBELUM MEMBUAT LOBI BARU
+      const rows = await getSheetData("Lobby");
+      let hasActiveLobby = false;
+
+      for (let i = 1; i < rows.length; i++) {
+        // Ingat urutan kolom: [Lobby ID, Password, Catatan, Creator, Waktu, Status]
+        const [, , , creator, , status] = rows[i];
+        if (creator === username && status === "Aktif") {
+          hasActiveLobby = true;
+          break;
+        }
+      }
+
+      // Jika ada lobi aktif, tolak permintaan
+      if (hasActiveLobby) {
+        return NextResponse.json({
+          type: 4,
+          data: {
+            flags: 64, // Ephemeral
+            content: "⚠️ **Gagal:** Kamu masih memiliki sesi lobi mabar yang sedang aktif! Silakan tutup lobi sebelumnya dengan `/close-lobby` sebelum membuat yang baru.",
+          },
+        });
+      }
+
+      // 2. JIKA AMAN, LANJUTKAN PEMBUATAN LOBI
       const options = body.data.options || [];
       const lobbyId = options.find((opt: any) => opt.name === "lobby_id")?.value || "-";
       const password = options.find((opt: any) => opt.name === "password")?.value || "Open (Tanpa Password)";
@@ -276,6 +299,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // --- 3. TANGANI SUBMIT FORM & TOMBOL ---
   if (body.type === 5) {
     if (body.data.custom_id === "modal_submit_build") {
       const username = body.member?.user?.username || "Hunter";
