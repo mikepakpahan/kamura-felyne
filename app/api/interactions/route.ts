@@ -65,16 +65,30 @@ export async function POST(req: NextRequest) {
     // B. Command: /submit-build
     if (commandName === "submit-build") {
       // Merakit Pop-up Modal Form
+      // Merakit Pop-up Modal Form
       const modalData = {
-        type: 9, // 9 = Balas dengan memunculkan form pop-up (Modal)
+        type: 9,
         data: {
           custom_id: "modal_submit_build",
           title: "Submit Build Senjata MH Rise",
           components: [
             { type: 1, components: [{ type: 4, custom_id: "build_name", label: "Nama Build", style: 1, required: true, placeholder: "Contoh: Raw Meta Risen Valstrax" }] },
             { type: 1, components: [{ type: 4, custom_id: "weapon", label: "Senjata & Augment", style: 1, required: true, placeholder: "Contoh: Kamura LS - Attack +3" }] },
-            { type: 1, components: [{ type: 4, custom_id: "armor", label: "Armor (Head s/d Legs) & Dekorasi", style: 2, required: true, placeholder: "Tuliskan detail kelima bagian armor dan dekorasinya di sini" }] },
-            { type: 1, components: [{ type: 4, custom_id: "talisman", label: "Talisman & Dekorasi", style: 2, required: true }] },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 4,
+                  custom_id: "armor",
+                  label: "Armor & Dekorasi (Jangan ubah formatnya)",
+                  style: 2, // 2 = Text area (Paragraf)
+                  required: true,
+                  // INI RAHASIANYA: \n digunakan untuk membuat baris baru (Enter)
+                  value: "Head :\nBody :\nArms :\nWaist :\nLegs :",
+                },
+              ],
+            },
+            { type: 1, components: [{ type: 4, custom_id: "talisman", label: "Talisman & Dekorasi", style: 1, required: true }] },
             { type: 1, components: [{ type: 4, custom_id: "notes", label: "Catatan / Playstyle", style: 2, required: false }] },
           ],
         },
