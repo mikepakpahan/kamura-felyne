@@ -13,10 +13,12 @@ function getModalValue(body: any, customId: string): string {
   return "";
 }
 
+// ==========================================
+// --- HELPER: OTENTIKASI & GOOGLE SHEETS ---
+// ==========================================
 async function getGoogleToken() {
   const clientEmail = process.env.GOOGLE_CLIENT_EMAIL!;
   let privateKey = process.env.GOOGLE_PRIVATE_KEY!;
-
   if (privateKey.startsWith('"') && privateKey.endsWith('"')) privateKey = privateKey.slice(1, -1);
   privateKey = privateKey.replace(/\\n/g, "\n");
 
@@ -42,17 +44,44 @@ async function getGoogleToken() {
   return data.access_token;
 }
 
-async function appendToSheet(values: string[]) {
+// Fungsi untuk menyimpan data ke Tab apa saja
+async function appendToSheet(tabName: string, values: string[]) {
   const sheetId = process.env.SPREADSHEET_ID!;
   const token = await getGoogleToken();
-  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Sheet1!A1:append?valueInputOption=USER_ENTERED`, {
+  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${tabName}!A1:append?valueInputOption=USER_ENTERED`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ values: [values] }),
   });
-  if (!res.ok) throw new Error(`Google Sheets API Error: ${await res.text()}`);
   return res.ok;
 }
+
+// Fungsi untuk membaca semua data dari suatu Tab
+async function getSheetData(tabName: string) {
+  const sheetId = process.env.SPREADSHEET_ID!;
+  const token = await getGoogleToken();
+  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${tabName}!A:E`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.values || [];
+}
+
+// Fungsi untuk memperbarui status lobi di baris tertentu
+async function updateLobbyStatus(rowIndex: number, status: string) {
+  const sheetId = process.env.SPREADSHEET_ID!;
+  const token = await getGoogleToken();
+  // Di Google Sheets, baris itu 1-based, jadi rowIndex + 1
+  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Lobby!E${rowIndex + 1}?valueInputOption=USER_ENTERED`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ values: [[status]] }),
+  });
+  return res.ok;
+}
+// ==========================================
 
 export async function POST(req: NextRequest) {
   const PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY;
@@ -73,11 +102,11 @@ export async function POST(req: NextRequest) {
 
   if (body.type === 1) return new Response(JSON.stringify({ type: 1 }), { status: 200, headers: { "Content-Type": "application/json" } });
 
+  // --- TANGANI SLASH COMMANDS (Tipe 2) ---
   if (body.type === 2) {
     const commandName = body.data.name;
     const username = body.member?.user?.username || "Hunter";
 
-    // --- COMMAND BARU: /builder ---
     if (commandName === "builder") {
       return new Response(
         JSON.stringify({
@@ -96,10 +125,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (commandName === "submit-build") {
+      return new Response(
+        JSON.stringify({
+          type: 9,
+          data: {
+            custom_id: "modal_submit_build",
+            title: "Submit Build via Encoding",
+            components: [
+              { type: 1, components: [{ type: 4, custom_id: "build_name", label: "Nama Build", style: 1, required: true }] },
+              { type: 1, components: [{ type: 4, custom_id: "weapon", label: "Jenis Senjata", style: 1, required: true, placeholder: "Contoh: Long Sword" }] },
+              {
+                type: 1,
+                components: [{ type: 4, custom_id: "encoding", label: "Build Encoding (Paste di sini)", style: 2, required: true, placeholder: "Buka https://gamecat.fun/e/#xxxxxs2OxYuux lalu copy-paste kode Export-nya ke sini." }],
+              },
+              { type: 1, components: [{ type: 4, custom_id: "notes", label: "Catatan (Opsional)", style: 2, required: false }] },
+            ],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    // A. LOGIKA: /create-lobby
     if (commandName === "create-lobby") {
       const options = body.data.options || [];
       const lobbyId = options.find((opt: any) => opt.name === "lobby_id")?.value || "-";
       const password = options.find((opt: any) => opt.name === "password")?.value || "Open (Tanpa Password)";
+      const currentTime = new Date().toISOString();
+
+      // Simpan data lobi baru ke tab 'Lobby' dengan status 'Aktif'
+      await appendToSheet("Lobby", [lobbyId, password, username, currentTime, "Aktif"]);
 
       return new Response(
         JSON.stringify({
@@ -114,8 +170,8 @@ export async function POST(req: NextRequest) {
                   { name: "Lobby ID", value: `\`${lobbyId}\``, inline: true },
                   { name: "Password", value: `\`${password}\``, inline: true },
                 ],
-                footer: { text: "Sesi ini akan otomatis ditutup dalam 6 jam." },
-                timestamp: new Date().toISOString(),
+                footer: { text: "Sesi ini akan otomatis ditutup dalam 6 jam. Gunakan /close-lobby jika sudah selesai." },
+                timestamp: currentTime,
               },
             ],
           },
@@ -124,31 +180,85 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (commandName === "submit-build") {
-      return new Response(
-        JSON.stringify({
-          type: 9,
-          data: {
-            custom_id: "modal_submit_build",
-            title: "Submit Build via Encoding",
-            components: [
-              { type: 1, components: [{ type: 4, custom_id: "build_name", label: "Nama Build", style: 1, required: true }] },
-              { type: 1, components: [{ type: 4, custom_id: "weapon", label: "Jenis Senjata", style: 1, required: true, placeholder: "Contoh: Long Sword" }] },
-              // Menambahkan instruksi dan link di Placeholder
-              {
-                type: 1,
-                components: [{ type: 4, custom_id: "encoding", label: "Build Encoding (Paste di sini)", style: 2, required: true, placeholder: "Buka https://gamecat.fun/e/#xxxxxs2OxYuux lalu copy-paste kode Export-nya ke sini." }],
-              },
-              { type: 1, components: [{ type: 4, custom_id: "notes", label: "Catatan (Opsional)", style: 2, required: false }] },
-            ],
-          },
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
+    // B. LOGIKA: /info-lobby
+    if (commandName === "info-lobby") {
+      const rows = await getSheetData("Lobby");
+      const activeFields: any[] = [];
+      const now = Date.now();
+      const SIX_HOURS = 6 * 60 * 60 * 1000;
+
+      // Skip baris index 0 karena merupakan nama header tabel
+      for (let i = 1; i < rows.length; i++) {
+        const [lobbyId, password, creator, createdAt, status] = rows[i];
+
+        if (status === "Aktif") {
+          const createdTimeMs = Date.parse(createdAt);
+
+          // Cek sistem Auto-Close 6 Jam secara on-the-fly
+          if (now - createdTimeMs > SIX_HOURS) {
+            await updateLobbyStatus(i, "Tutup"); // Ubah status di Sheets jadi Tutup
+          } else {
+            // Jika masih di bawah 6 jam, masukkan ke daftar lobi aktif
+            activeFields.push({
+              name: `🔹 Lobi @${creator}`,
+              value: `**ID:** \`${lobbyId}\` | **PW:** \`${password}\``,
+              inline: false,
+            });
+          }
+        }
+      }
+
+      const embed = {
+        title: "📡 Daftar Sesi Lobi Mabar Aktif",
+        color: activeFields.length > 0 ? 0x00ffff : 0xff0000,
+        description: activeFields.length > 0 ? "Berikut adalah lobi mabar yang sedang membuka lowongan slot Hunter:" : "❌ Tidak ada sesi lobi yang aktif saat ini. Silakan buat lobi baru menggunakan perintah `/create-lobby`!",
+        fields: activeFields,
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify({ type: 4, data: { embeds: [embed] } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // C. LOGIKA: /close-lobby
+    if (commandName === "close-lobby") {
+      const rows = await getSheetData("Lobby");
+      let foundIndex = -1;
+
+      // Cari lobi milik si pengetik command yang statusnya masih aktif
+      for (let i = 1; i < rows.length; i++) {
+        const [, , creator, , status] = rows[i];
+        if (creator === username && status === "Aktif") {
+          foundIndex = i;
+          break;
+        }
+      }
+
+      if (foundIndex !== -1) {
+        // Matikan statusnya di Sheets
+        await updateLobbyStatus(foundIndex, "Tutup");
+        return new Response(
+          JSON.stringify({
+            type: 4,
+            data: { content: "✅ Lobi mabar kamu telah berhasil ditutup! Terima kasih sudah mabar hari ini." },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      } else {
+        return new Response(
+          JSON.stringify({
+            type: 4,
+            data: { flags: 64, content: "⚠️ Kamu tidak memiliki sesi lobi aktif yang terdaftar di sistem saat ini." },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
     }
   }
 
-  // --- SUBMIT FORM & KLIK TOMBOL (Sama seperti sebelumnya) ---
+  // --- TANGANI SUBMIT FORM (Tipe 5) & TOMBOL APPROVE (Tipe 3) ---
   if (body.type === 5) {
     if (body.data.custom_id === "modal_submit_build") {
       const username = body.member?.user?.username || "Hunter";
@@ -214,7 +324,8 @@ export async function POST(req: NextRequest) {
           const weapon = embed.fields[1].value;
           const encoding = embed.fields[2].value.replace(/`/g, "").trim();
           const notes = embed.fields[3].value;
-          await appendToSheet([buildName, weapon, encoding, notes, creator]);
+          // Simpan build ke tab 'Sheet1'
+          await appendToSheet("Sheet1", [buildName, weapon, encoding, notes, creator]);
         }
 
         return new Response(

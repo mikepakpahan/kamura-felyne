@@ -8,7 +8,6 @@ export async function GET() {
     return NextResponse.json({ error: "APP_ID atau TOKEN tidak ditemukan di .env" }, { status: 500 });
   }
 
-  // 1. Definisikan daftar Slash Commands
   const commands = [
     {
       name: "create-lobby",
@@ -17,6 +16,14 @@ export async function GET() {
         { name: "lobby_id", description: "ID Lobby di dalam game", type: 3, required: true },
         { name: "password", description: "Password Lobby (kosongkan jika tidak ada)", type: 3, required: false },
       ],
+    },
+    {
+      name: "close-lobby",
+      description: "Tutup sesi lobi aktif yang kamu buat sebelumnya",
+    },
+    {
+      name: "info-lobby",
+      description: "Lihat info sesi lobi mabar yang sedang aktif saat ini",
     },
     {
       name: "submit-build",
@@ -28,7 +35,6 @@ export async function GET() {
     },
   ];
 
-  // 2. Kirim data (PUT Request) ke API Discord
   const response = await fetch(`https://discord.com/api/v10/applications/${APP_ID}/commands`, {
     method: "PUT",
     headers: {
@@ -38,20 +44,13 @@ export async function GET() {
     body: JSON.stringify(commands),
   });
 
-  // 3. Cek apakah berhasil
   if (response.ok) {
     return NextResponse.json({
       success: true,
-      message: "Slash Commands berhasil didaftarkan ke Discord!",
+      message: "Semua Slash Commands (termasuk sistem Lobby) berhasil didaftarkan!",
     });
   } else {
     const errorData = await response.text();
-    return NextResponse.json(
-      {
-        success: false,
-        error: errorData,
-      },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, error: errorData }, { status: 500 });
   }
 }
