@@ -40,27 +40,24 @@ async function getGoogleToken() {
     body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: jwt }),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(`Google Auth Failed: ${JSON.stringify(data)}`);
   return data.access_token;
 }
 
-// Fungsi untuk menyimpan data ke Tab apa saja
 async function appendToSheet(tabName: string, values: string[]) {
   const sheetId = process.env.SPREADSHEET_ID!;
   const token = await getGoogleToken();
-  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${tabName}!A1:append?valueInputOption=USER_ENTERED`, {
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${tabName}!A1:append?valueInputOption=USER_ENTERED`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ values: [values] }),
   });
-  return res.ok;
 }
 
-// Fungsi untuk membaca semua data dari suatu Tab
 async function getSheetData(tabName: string) {
   const sheetId = process.env.SPREADSHEET_ID!;
   const token = await getGoogleToken();
-  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${tabName}!A:E`, {
+  // Mengambil kolom A sampai H untuk data lobi lengkap
+  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${tabName}!A:H`, {
     method: "GET",
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -69,17 +66,15 @@ async function getSheetData(tabName: string) {
   return data.values || [];
 }
 
-// Fungsi untuk memperbarui status lobi di baris tertentu
 async function updateLobbyStatus(rowIndex: number, status: string) {
   const sheetId = process.env.SPREADSHEET_ID!;
   const token = await getGoogleToken();
-  // Di Google Sheets, baris itu 1-based, jadi rowIndex + 1
-  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Lobby!E${rowIndex + 1}?valueInputOption=USER_ENTERED`, {
+  // Di format baru, Kolom Status bergeser ke Kolom F
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Lobby!F${rowIndex + 1}?valueInputOption=USER_ENTERED`, {
     method: "PUT",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ values: [[status]] }),
   });
-  return res.ok;
 }
 // ==========================================
 
@@ -102,10 +97,10 @@ export async function POST(req: NextRequest) {
 
   if (body.type === 1) return new Response(JSON.stringify({ type: 1 }), { status: 200, headers: { "Content-Type": "application/json" } });
 
-  // --- TANGANI SLASH COMMANDS (Tipe 2) ---
   if (body.type === 2) {
     const commandName = body.data.name;
     const username = body.member?.user?.username || "Hunter";
+    const channelId = body.channel_id;
 
     if (commandName === "builder") {
       return new Response(
@@ -147,61 +142,89 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // A. LOGIKA: /create-lobby
+    // A. LOGIKA UTAMA BARU: /create-lobby
     if (commandName === "create-lobby") {
       const options = body.data.options || [];
       const lobbyId = options.find((opt: any) => opt.name === "lobby_id")?.value || "-";
       const password = options.find((opt: any) => opt.name === "password")?.value || "Open (Tanpa Password)";
+      const catatan = options.find((opt: any) => opt.name === "catatan")?.value || "-";
       const currentTime = new Date().toISOString();
 
-      // Simpan data lobi baru ke tab 'Lobby' dengan status 'Aktif'
-      await appendToSheet("Lobby", [lobbyId, password, username, currentTime, "Aktif"]);
+      // Atur tag sebutan role hunter
+      const mentionTarget = process.env.HUNTER_ROLE_ID ? `<@&${process.env.HUNTER_ROLE_ID}>` : "@here";
 
+      // Merakit payload pengumuman publik
+      const publicPayload = {
+        content: `📢 ${mentionTarget} Bersiap! Ada sesi mabar baru dibuka!`,
+        embeds: [
+          {
+            title: "⚔️ Sesi Lobi Monster Hunter Aktif!",
+            description: `Lobi baru saja dibuat oleh **@${username}**. Yuk merapat!`,
+            color: 0x00ff00,
+            fields: [
+              { name: "Lobby ID", value: `\`${lobbyId}\``, inline: true },
+              { name: "Password", value: `\`${password}\``, inline: true },
+              { name: "Catatan Sesi", value: catatan, inline: false },
+            ],
+            footer: { text: "Sesi ini akan otomatis ditutup dalam 6 jam. Gunakan /close-lobby jika sudah selesai." },
+            timestamp: currentTime,
+          },
+        ],
+      };
+
+      // Tembak pesan publik ke channel lewat jalur API belakang
+      const msgRes = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bot ${BOT_TOKEN}` },
+        body: JSON.stringify(publicPayload),
+      });
+
+      let messageId = "";
+      if (msgRes.ok) {
+        const msgData = await msgRes.json();
+        messageId = msgData.id; // TANGKAP ID PESAN NYA!
+      }
+
+      // Simpan seluruh data lengkap ke baris Google Sheets
+      await appendToSheet("Lobby", [lobbyId, password, catatan, username, currentTime, "Aktif", channelId, messageId]);
+
+      // Kirim balasan ephemeral instan ke si pembuat agar tidak mengotori chat publik
       return new Response(
         JSON.stringify({
           type: 4,
-          data: {
-            embeds: [
-              {
-                title: "⚔️ Sesi Lobi Monster Hunter Aktif!",
-                description: `Lobi baru saja dibuat oleh **@${username}**. Yuk merapat!`,
-                color: 0x00ff00,
-                fields: [
-                  { name: "Lobby ID", value: `\`${lobbyId}\``, inline: true },
-                  { name: "Password", value: `\`${password}\``, inline: true },
-                ],
-                footer: { text: "Sesi ini akan otomatis ditutup dalam 6 jam. Gunakan /close-lobby jika sudah selesai." },
-                timestamp: currentTime,
-              },
-            ],
-          },
+          data: { flags: 64, content: `✅ Lobi berhasil dibuat dan pengumuman telah dikirim ke channel!` },
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }
 
-    // B. LOGIKA: /info-lobby
+    // B. LOGIKA UTAMA BARU: /info-lobby (Menjadi EPHEMERAL)
     if (commandName === "info-lobby") {
       const rows = await getSheetData("Lobby");
       const activeFields: any[] = [];
       const now = Date.now();
       const SIX_HOURS = 6 * 60 * 60 * 1000;
 
-      // Skip baris index 0 karena merupakan nama header tabel
       for (let i = 1; i < rows.length; i++) {
-        const [lobbyId, password, creator, createdAt, status] = rows[i];
+        const [lobbyId, password, catatan, creator, createdAt, status, lChannelId, lMessageId] = rows[i];
 
         if (status === "Aktif") {
           const createdTimeMs = Date.parse(createdAt);
 
-          // Cek sistem Auto-Close 6 Jam secara on-the-fly
           if (now - createdTimeMs > SIX_HOURS) {
-            await updateLobbyStatus(i, "Tutup"); // Ubah status di Sheets jadi Tutup
+            // Auto-Close 6 Jam: Ubah status di Sheets
+            await updateLobbyStatus(i, "Tutup");
+            // SEKALIGUS HAPUS PESAN NYA DI DISCORD!
+            if (lChannelId && lMessageId) {
+              await fetch(`https://discord.com/api/v10/channels/${lChannelId}/messages/${lMessageId}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bot ${BOT_TOKEN}` },
+              });
+            }
           } else {
-            // Jika masih di bawah 6 jam, masukkan ke daftar lobi aktif
             activeFields.push({
               name: `🔹 Lobi @${creator}`,
-              value: `**ID:** \`${lobbyId}\` | **PW:** \`${password}\``,
+              value: `**ID:** \`${lobbyId}\` | **PW:** \`${password}\` ${catatan !== "-" ? `\n*Catatan:* ${catatan}` : ""}`,
               inline: false,
             });
           }
@@ -216,33 +239,51 @@ export async function POST(req: NextRequest) {
         timestamp: new Date().toISOString(),
       };
 
-      return new Response(JSON.stringify({ type: 4, data: { embeds: [embed] } }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          type: 4,
+          data: {
+            flags: 64, // DIUBAH JADI EPHEMERAL (Hanya bisa dilihat oleh pengirim command)
+            embeds: [embed],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
     }
 
-    // C. LOGIKA: /close-lobby
+    // C. LOGIKA UTAMA BARU: /close-lobby (HAPUS PESAN PENGUMUMAN)
     if (commandName === "close-lobby") {
       const rows = await getSheetData("Lobby");
       let foundIndex = -1;
+      let targetChannelId = "";
+      let targetMessageId = "";
 
-      // Cari lobi milik si pengetik command yang statusnya masih aktif
       for (let i = 1; i < rows.length; i++) {
-        const [, , creator, , status] = rows[i];
+        const [, , , creator, , status, lChannelId, lMessageId] = rows[i];
         if (creator === username && status === "Aktif") {
           foundIndex = i;
+          targetChannelId = lChannelId;
+          targetMessageId = lMessageId;
           break;
         }
       }
 
       if (foundIndex !== -1) {
-        // Matikan statusnya di Sheets
+        // 1. Matikan statusnya di Sheets
         await updateLobbyStatus(foundIndex, "Tutup");
+
+        // 2. JALUR PENGHAPUSAN: Perintahkan bot menghapus pesan lobi lama di discord agar clean
+        if (targetChannelId && targetMessageId) {
+          await fetch(`https://discord.com/api/v10/channels/${targetChannelId}/messages/${targetMessageId}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bot ${BOT_TOKEN}` },
+          });
+        }
+
         return new Response(
           JSON.stringify({
             type: 4,
-            data: { content: "✅ Lobi mabar kamu telah berhasil ditutup! Terima kasih sudah mabar hari ini." },
+            data: { content: "✅ Sesi lobi kamu ditutup, dan pesan pengumuman telah dihapus dari channel!" },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
@@ -250,7 +291,7 @@ export async function POST(req: NextRequest) {
         return new Response(
           JSON.stringify({
             type: 4,
-            data: { flags: 64, content: "⚠️ Kamu tidak memiliki sesi lobi aktif yang terdaftar di sistem saat ini." },
+            data: { flags: 64, content: "⚠️ Kamu tidak memiliki sesi lobi aktif yang terdaftar di sistem." },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
@@ -258,7 +299,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // --- TANGANI SUBMIT FORM (Tipe 5) & TOMBOL APPROVE (Tipe 3) ---
+  // --- LOGIKA FORM BUILD & TOMBOL APPROVE (Tetap sama seperti versi encoding sebelumnya) ---
   if (body.type === 5) {
     if (body.data.custom_id === "modal_submit_build") {
       const username = body.member?.user?.username || "Hunter";
@@ -324,7 +365,6 @@ export async function POST(req: NextRequest) {
           const weapon = embed.fields[1].value;
           const encoding = embed.fields[2].value.replace(/`/g, "").trim();
           const notes = embed.fields[3].value;
-          // Simpan build ke tab 'Sheet1'
           await appendToSheet("Sheet1", [buildName, weapon, encoding, notes, creator]);
         }
 

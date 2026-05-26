@@ -5,7 +5,7 @@ export async function GET() {
   const TOKEN = process.env.DISCORD_BOT_TOKEN;
 
   if (!APP_ID || !TOKEN) {
-    return NextResponse.json({ error: "APP_ID atau TOKEN tidak ditemukan di .env" }, { status: 500 });
+    return NextResponse.json({ error: "APP_ID atau TOKEN tidak ditemukan" }, { status: 500 });
   }
 
   const commands = [
@@ -15,42 +15,24 @@ export async function GET() {
       options: [
         { name: "lobby_id", description: "ID Lobby di dalam game", type: 3, required: true },
         { name: "password", description: "Password Lobby (kosongkan jika tidak ada)", type: 3, required: false },
+        { name: "catatan", description: "Contoh: UP Master Rank, Quest Event, Farming, dll.", type: 3, required: false }, // OPSI BARU
       ],
     },
-    {
-      name: "close-lobby",
-      description: "Tutup sesi lobi aktif yang kamu buat sebelumnya",
-    },
-    {
-      name: "info-lobby",
-      description: "Lihat info sesi lobi mabar yang sedang aktif saat ini",
-    },
-    {
-      name: "submit-build",
-      description: "Buka form untuk menyumbang build senjata",
-    },
-    {
-      name: "builder",
-      description: "Dapatkan link website GameCat Armorset Builder",
-    },
+    { name: "close-lobby", description: "Tutup sesi lobi aktif yang kamu buat sebelumnya" },
+    { name: "info-lobby", description: "Lihat info sesi lobi mabar yang sedang aktif saat ini" },
+    { name: "submit-build", description: "Buka form untuk menyumbang build senjata" },
+    { name: "builder", description: "Dapatkan link website GameCat Armorset Builder" },
   ];
 
   const response = await fetch(`https://discord.com/api/v10/applications/${APP_ID}/commands`, {
     method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bot ${TOKEN}`,
-    },
+    headers: { "Content-Type": "application/json", Authorization: `Bot ${TOKEN}` },
     body: JSON.stringify(commands),
   });
 
   if (response.ok) {
-    return NextResponse.json({
-      success: true,
-      message: "Semua Slash Commands (termasuk sistem Lobby) berhasil didaftarkan!",
-    });
+    return NextResponse.json({ success: true, message: "Slash Commands updated successfully!" });
   } else {
-    const errorData = await response.text();
-    return NextResponse.json({ success: false, error: errorData }, { status: 500 });
+    return NextResponse.json({ success: false, error: await response.text() }, { status: 500 });
   }
 }
