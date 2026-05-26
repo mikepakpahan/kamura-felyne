@@ -273,6 +273,7 @@ export async function POST(req: NextRequest) {
         await updateLobbyStatus(foundIndex, "Tutup");
 
         // 2. JALUR PENGHAPUSAN: Perintahkan bot menghapus pesan lobi lama di discord agar clean
+        // 2. JALUR PENGHAPUSAN: Perintahkan bot menghapus pesan lobi lama di discord agar clean
         if (targetChannelId && targetMessageId) {
           await fetch(`https://discord.com/api/v10/channels/${targetChannelId}/messages/${targetMessageId}`, {
             method: "DELETE",
@@ -280,10 +281,14 @@ export async function POST(req: NextRequest) {
           });
         }
 
+        // SEKARANG DIUBAH JADI EPHEMERAL (HANYA BISA DILIHAT OLEH USER YANG MENUTUP)
         return new Response(
           JSON.stringify({
             type: 4,
-            data: { content: "✅ Sesi lobi kamu ditutup, dan pesan pengumuman telah dihapus dari channel!" },
+            data: {
+              flags: 64, // Baris ajaib ini yang bikin pesan jadi privat
+              content: "✅ Sesi lobi kamu ditutup, dan pesan pengumuman telah dihapus dari channel!",
+            },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
