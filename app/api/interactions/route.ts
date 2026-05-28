@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
   let rawBody = "";
   try {
     rawBody = await req.text();
-    // PERBAIKAN DARI KAMU
+    // Berhasil menggunakan perbaikan kode milikmu (ditambahkan await)
     const isValidRequest = await verifyKey(rawBody, signature, timestamp, PUBLIC_KEY);
     if (!isValidRequest) {
       return NextResponse.json({ error: "Bad signature" }, { status: 401 });
@@ -102,12 +102,10 @@ export async function POST(req: NextRequest) {
 
   const body = JSON.parse(rawBody);
 
-  // --- 1. BALAS PING ---
   if (body.type === 1) return NextResponse.json({ type: 1 });
 
   if (!BOT_TOKEN || !APPROVAL_CHANNEL_ID) return NextResponse.json({ error: "Config Error" }, { status: 500 });
 
-  // --- 2. TANGANI SLASH COMMANDS ---
   if (body.type === 2) {
     const commandName = body.data.name;
     const username = body.member?.user?.username || "Hunter";
@@ -145,12 +143,10 @@ export async function POST(req: NextRequest) {
     }
 
     if (commandName === "create-lobby") {
-      // 1. CEK LOBI GANDA SEBELUM MEMBUAT LOBI BARU
       const rows = await getSheetData("Lobby");
       let hasActiveLobby = false;
 
       for (let i = 1; i < rows.length; i++) {
-        // Ingat urutan kolom: [Lobby ID, Password, Catatan, Creator, Waktu, Status]
         const [, , , creator, , status] = rows[i];
         if (creator === username && status === "Aktif") {
           hasActiveLobby = true;
@@ -158,23 +154,21 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Jika ada lobi aktif, tolak permintaan
       if (hasActiveLobby) {
         return NextResponse.json({
           type: 4,
-          data: {
-            flags: 64, // Ephemeral
-            content: "⚠️ **Gagal:** Kamu masih memiliki sesi lobi mabar yang sedang aktif! Silakan tutup lobi sebelumnya dengan `/close-lobby` sebelum membuat yang baru.",
-          },
+          data: { flags: 64, content: "⚠️ **Gagal:** Kamu masih memiliki sesi lobi mabar yang sedang aktif! Silakan tutup lobi sebelumnya dengan `/close-lobby` sebelum membuat yang baru." },
         });
       }
 
-      // 2. JIKA AMAN, LANJUTKAN PEMBUATAN LOBI
       const options = body.data.options || [];
       const lobbyId = options.find((opt: any) => opt.name === "lobby_id")?.value || "-";
       const password = options.find((opt: any) => opt.name === "password")?.value || "Open (Tanpa Password)";
       const catatan = options.find((opt: any) => opt.name === "catatan")?.value || "-";
-      const currentTime = new Date().toISOString();
+
+      // AKSI PERBAIKAN:
+      const rawTimestampString = Date.now().toString(); // Angka mentah milidetik dikonversi ke string untuk disimpan ke Sheets
+      const displayTimeISO = new Date().toISOString(); // Tetap pakai ISO murni khusus untuk tampilan estetik footer Discord
 
       const mentionTarget = process.env.HUNTER_ROLE_ID ? `<@&${process.env.HUNTER_ROLE_ID}>` : "@here";
 
@@ -191,7 +185,7 @@ export async function POST(req: NextRequest) {
               { name: "Catatan Sesi", value: catatan, inline: false },
             ],
             footer: { text: "Sesi ini akan otomatis ditutup dalam 6 jam. Gunakan /close-lobby jika sudah selesai." },
-            timestamp: currentTime,
+            timestamp: displayTimeISO,
           },
         ],
       };
@@ -208,7 +202,8 @@ export async function POST(req: NextRequest) {
         messageId = msgData.id;
       }
 
-      await appendToSheet("Lobby", [lobbyId, password, catatan, username, currentTime, "Aktif", channelId, messageId]);
+      // Menyimpan nilai mentah angka milidetik (rawTimestampString) ke kolom waktu di Sheets
+      await appendToSheet("Lobby", [lobbyId, password, catatan, username, rawTimestampString, "Aktif", channelId, messageId]);
 
       return NextResponse.json({
         type: 4,
@@ -226,7 +221,11 @@ export async function POST(req: NextRequest) {
         const [lobbyId, password, catatan, creator, createdAt, status, lChannelId, lMessageId] = rows[i];
 
         if (status === "Aktif") {
-          const createdTimeMs = Date.parse(createdAt);
+          // AKSI PERBAIKAN: Mengonversi langsung string angka milidetik dari Sheets ke tipe data Number
+          const createdTimeMs = Number(createdAt);
+
+          // Mencegah error pembacaan data baris teks yang rusak/bukan angka
+          if (isNaN(createdTimeMs)) continue;
 
           if (now - createdTimeMs > SIX_HOURS) {
             await updateLobbyStatus(i, "Tutup");
@@ -299,7 +298,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // --- 3. TANGANI SUBMIT FORM & TOMBOL ---
+  // --- 3. TANGANI SUBMIT FORM & TOMBOL APPROVE ---
   if (body.type === 5) {
     if (body.data.custom_id === "modal_submit_build") {
       const username = body.member?.user?.username || "Hunter";
