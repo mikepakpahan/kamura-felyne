@@ -22,6 +22,18 @@ export async function GET() {
     { name: "info-lobby", description: "Lihat info sesi lobi mabar yang sedang aktif saat ini" },
     { name: "submit-build", description: "Buka form untuk menyumbang build senjata" },
     { name: "builder", description: "Dapatkan link website GameCat Armorset Builder" },
+    {
+      name: "build-info",
+      description: "Cari dan lihat rekomendasi build senjata dari database Kamura",
+      options: [
+        {
+          name: "keyword",
+          description: "Cari nama senjata (misal: Long Sword) atau nama build. Kosongkan untuk lihat semua.",
+          type: 3,
+          required: false,
+        },
+      ],
+    },
   ];
 
   const response = await fetch(`https://discord.com/api/v10/applications/${APP_ID}/commands`, {

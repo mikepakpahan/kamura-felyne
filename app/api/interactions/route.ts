@@ -259,6 +259,76 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    if (commandName === "build-info") {
+      const options = body.data.options || [];
+      const keyword = options.find((opt: any) => opt.name === "keyword")?.value?.toLowerCase() || "";
+
+      // Mengambil data dari Sheet1 (tempat build disimpan)
+      const rows = await getSheetData("Sheet1");
+      const results: any[] = [];
+
+      // Loop dari baris 1 (melewati header) ke bawah
+      for (let i = 1; i < rows.length; i++) {
+        const [buildName, weapon, encoding, notes, creator] = rows[i];
+
+        // Pencarian cerdas (case-insensitive) pada Nama Build atau Jenis Senjata
+        const matchBuild = buildName?.toLowerCase().includes(keyword);
+        const matchWeapon = weapon?.toLowerCase().includes(keyword);
+
+        // Jika keyword kosong, tampilkan semua. Jika ada keyword, cek kecocokan.
+        if (!keyword || matchBuild || matchWeapon) {
+          results.push({ buildName, weapon, encoding, notes, creator });
+        }
+      }
+
+      // Jika tidak ada yang cocok
+      if (results.length === 0) {
+        return NextResponse.json({
+          type: 4,
+          data: {
+            flags: 64, // Ephemeral
+            content: `❌ Tidak ditemukan build dengan kata kunci **"${keyword}"**. Coba gunakan nama senjata atau sebutan lain.`,
+          },
+        });
+      }
+
+      // Membalik urutan array agar build terbaru (paling bawah di Sheets) muncul duluan
+      results.reverse();
+
+      // Membatasi hasil maksimal 5 agar pesan Discord tidak terlalu panjang dan error
+      const maxDisplay = 5;
+      const displayResults = results.slice(0, maxDisplay);
+
+      const fields = displayResults.map((b) => ({
+        name: `🔹 ${b.buildName} (${b.weapon})`,
+        value: `**Creator:** @${b.creator}\n**Encoding:** \`${b.encoding}\`\n*Catatan:* ${b.notes !== "-" ? b.notes : "Tidak ada catatan."}`,
+        inline: false,
+      }));
+
+      const hiddenCount = results.length - maxDisplay;
+
+      const embed = {
+        title: "🛡️ Database Build Kamura",
+        description: keyword
+          ? `Hasil pencarian untuk: **${keyword}**\n🔗 *Copy kode Encoding di bawah dan paste di menu Import pada [GameCat Builder](https://gamecat.fun/e/#xxxxxs2OxYuux).*`
+          : `Menampilkan daftar build terbaru.\n🔗 *Copy kode Encoding di bawah dan paste di menu Import pada [GameCat Builder](https://gamecat.fun/e/#xxxxxs2OxYuux).*`,
+        color: 0x00aaff,
+        fields: fields,
+        footer: {
+          text: hiddenCount > 0 ? `Ada +${hiddenCount} build lain disembunyikan. Gunakan /build-info dengan keyword lebih spesifik.` : "Sistem Database Kamura Felyne",
+        },
+        timestamp: new Date().toISOString(),
+      };
+
+      return NextResponse.json({
+        type: 4,
+        data: {
+          // Sengaja DIBUAT PUBLIK agar member lain bisa ikut melihat hasil pencarian build
+          embeds: [embed],
+        },
+      });
+    }
+
     if (commandName === "close-lobby") {
       const rows = await getSheetData("Lobby");
       let foundIndex = -1;
