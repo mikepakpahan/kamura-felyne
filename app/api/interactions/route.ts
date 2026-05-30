@@ -366,6 +366,28 @@ export async function POST(req: NextRequest) {
         });
       }
     }
+    if (commandName === "list-build") {
+      // Ganti dengan URL Vercel kamu yang asli
+      const websiteUrl = "https://kamura-felyne.vercel.app";
+
+      return NextResponse.json({
+        type: 4,
+        data: {
+          embeds: [
+            {
+              title: "🌐 Website Database Kamura",
+              description:
+                'Semua build senjata yang dikirim oleh hunter di server kita sekarang tersedia di website khusus!\n\nKamu bisa melihat daftarnya dan langsung klik tombol **"Buka di GameCat"** untuk meng-import armornya secara otomatis.',
+              color: 0x10b981, // Warna Hijau Emerald yang senada dengan tema light
+              fields: [{ name: "Akses Website Di Sini:", value: `👉 **[Buka Kamura Armory](${websiteUrl})**`, inline: false }],
+              thumbnail: {
+                url: "https://cdn-icons-png.flaticon.com/512/3214/3214746.png", // Icon buku/database opsional
+              },
+            },
+          ],
+        },
+      });
+    }
     if (commandName === "share-live") {
       const LIVE_CHANNEL_ID = process.env.LIVE_CHANNEL_ID;
       if (!LIVE_CHANNEL_ID) {

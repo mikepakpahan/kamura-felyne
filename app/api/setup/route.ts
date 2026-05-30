@@ -35,6 +35,10 @@ export async function GET() {
       ],
     },
     {
+      name: "list-build",
+      description: "Dapatkan link website untuk melihat semua koleksi build dari server kita!",
+    },
+    {
       name: "share-live",
       description: "Promosikan live stream kamu ke seluruh server!",
       options: [

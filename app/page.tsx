@@ -1,63 +1,100 @@
-import Image from "next/image";
+import { SignJWT, importPKCS8 } from "jose";
+import Link from "next/link";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+async function getGoogleToken() {
+  const clientEmail = process.env.GOOGLE_CLIENT_EMAIL!;
+  let privateKey = process.env.GOOGLE_PRIVATE_KEY!;
+  if (privateKey.startsWith('"') && privateKey.endsWith('"')) privateKey = privateKey.slice(1, -1);
+  privateKey = privateKey.replace(/\\n/g, "\n");
+
+  const alg = "RS256";
+  const pkcs8 = await importPKCS8(privateKey, alg);
+  const jwt = await new SignJWT({
+    iss: clientEmail,
+    scope: "https://www.googleapis.com/auth/spreadsheets.readonly",
+    aud: "https://oauth2.googleapis.com/token",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    iat: Math.floor(Date.now() / 1000),
+  })
+    .setProtectedHeader({ alg, typ: "JWT" })
+    .sign(pkcs8);
+
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: jwt }),
+  });
+  const data = await res.json();
+  return data.access_token;
+}
+
+async function getBuilds() {
+  const sheetId = process.env.SPREADSHEET_ID!;
+  const token = await getGoogleToken();
+  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Sheet1!A:E`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.values || [];
+}
+
+export default async function PublicHomePage() {
+  const rows = await getBuilds();
+  const builds = rows.slice(1).reverse();
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-4 md:p-8">
+      {/* Navbar Publik */}
+      <nav className="max-w-7xl mx-auto mb-8 flex items-center justify-between bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+        <div>
+          <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+            Kamura<span className="text-emerald-600">Felyne</span>
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+          <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Public Armory</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </nav>
+
+      {/* Konten Utama */}
+      <main className="max-w-7xl mx-auto">
+        <div className="bg-white border border-slate-200 rounded-[2.5rem] p-6 md:p-10 shadow-sm">
+          <div className="mb-8">
+            <h2 className="text-2xl font-extrabold text-slate-800">Koleksi Build Hunter</h2>
+            <p className="text-slate-500 text-sm">Temukan inspirasi set armor dari para hunter di server kita.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {builds.length === 0 ? (
+              <div className="col-span-full text-center py-12 text-slate-400 italic">Belum ada build yang dibagikan.</div>
+            ) : (
+              builds.map((build: string[], index: number) => {
+                // MENGGUNAKAN IDE BRILIANMU UNTUK URL GAMECAT
+                const gamecatUrl = `https://gamecat.fun/e/#${build[2]}`;
+
+                return (
+                  <div key={index} className="bg-slate-50 rounded-3xl p-6 border border-slate-100 hover:shadow-md transition-all flex flex-col justify-between">
+                    <div>
+                      <div className="flex justify-between items-start mb-4">
+                        <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">
+                          {build[1]} {/* Jenis Senjata */}
+                        </span>
+                        <span className="text-xs font-bold text-slate-400">@{build[4]}</span>
+                      </div>
+                      <h3 className="text-xl font-bold text-slate-800 mb-2">{build[0]}</h3>
+                      <p className="text-sm text-slate-500 mb-6 line-clamp-3">{build[3] !== "-" ? build[3] : "Tidak ada catatan tambahan untuk build ini."}</p>
+                    </div>
+
+                    {/* TOMBOL AJAIB 1-CLICK IMPORT */}
+                    <Link href={gamecatUrl} target="_blank" className="w-full text-center bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-2xl transition-all text-sm">
+                      Buka di GameCat
+                    </Link>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
       </main>
     </div>
