@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-export function middleware(request: NextRequest) {
+// NAMA FUNGSINYA KITA UBAH MENJADI "proxy"
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Lindungi semua route yang diawali dengan /dashboard
@@ -20,7 +21,7 @@ export function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
-// Menentukan rute mana saja yang diproses middleware
+// Menentukan rute mana saja yang diproses proxy
 export const config = {
   matcher: "/dashboard/:path*",
 };
