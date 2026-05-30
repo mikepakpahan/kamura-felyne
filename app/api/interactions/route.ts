@@ -366,6 +366,70 @@ export async function POST(req: NextRequest) {
         });
       }
     }
+    if (commandName === "share-live") {
+      const LIVE_CHANNEL_ID = process.env.LIVE_CHANNEL_ID;
+      if (!LIVE_CHANNEL_ID) {
+        return NextResponse.json({ type: 4, data: { flags: 64, content: "⚠️ Admin belum mengatur LIVE_CHANNEL_ID di server." } });
+      }
+
+      const options = body.data.options || [];
+      const platform = options.find((opt: any) => opt.name === "platform")?.value;
+      // Menghapus tanda '@' jika user bandel tetap memasukkannya
+      const rawUsername = options.find((opt: any) => opt.name === "username")?.value.replace("@", "") || "";
+      const pesan = options.find((opt: any) => opt.name === "pesan")?.value || "Sedang live sekarang, yuk ramaikan!";
+
+      let liveUrl = "";
+      let color = 0x000000;
+      let platformName = "";
+      let emoji = "";
+
+      // Setingan spesifik tiap platform
+      if (platform === "tiktok") {
+        liveUrl = `https://www.tiktok.com/@${rawUsername}/live`;
+        color = 0xff0050; // Merah-Pink TikTok
+        platformName = "TikTok";
+        emoji = "📱";
+      } else if (platform === "twitch") {
+        liveUrl = `https://www.twitch.tv/${rawUsername}`;
+        color = 0x9146ff; // Ungu Twitch
+        platformName = "Twitch";
+        emoji = "🟪";
+      } else if (platform === "youtube") {
+        liveUrl = `https://www.youtube.com/@${rawUsername}/live`;
+        color = 0xff0000; // Merah YouTube
+        platformName = "YouTube";
+        emoji = "🟥";
+      }
+
+      const publicPayload = {
+        content: `📢 **@here, Hunter kita lagi LIVE!**`,
+        embeds: [
+          {
+            title: `${emoji} @${username} sedang Live di ${platformName}!`,
+            description: `**Pesan:**\n${pesan}\n\n👉 **[KLIK DI SINI UNTUK NONTON](${liveUrl})**`,
+            color: color,
+            thumbnail: {
+              // Bisa pakai avatar Discord milik user sebagai thumbnail
+              url: body.member?.user?.avatar ? `https://cdn.discordapp.com/avatars/${body.member.user.id}/${body.member.user.avatar}.png` : undefined,
+            },
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      };
+
+      // Tembak pengumuman ke channel Live
+      await fetch(`https://discord.com/api/v10/channels/${LIVE_CHANNEL_ID}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` },
+        body: JSON.stringify(publicPayload),
+      });
+
+      // Balasan privat (ephemeral) ke streamer
+      return NextResponse.json({
+        type: 4,
+        data: { flags: 64, content: `✅ Pengumuman live kamu berhasil disebarkan ke channel <#${LIVE_CHANNEL_ID}>!` },
+      });
+    }
   }
 
   // --- 3. TANGANI SUBMIT FORM & TOMBOL APPROVE ---

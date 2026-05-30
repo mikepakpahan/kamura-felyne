@@ -34,6 +34,35 @@ export async function GET() {
         },
       ],
     },
+    {
+      name: "share-live",
+      description: "Promosikan live stream kamu ke seluruh server!",
+      options: [
+        {
+          name: "platform",
+          description: "Pilih platform tempat kamu live",
+          type: 3,
+          required: true,
+          choices: [
+            { name: "TikTok", value: "tiktok" },
+            { name: "Twitch", value: "twitch" },
+            { name: "YouTube", value: "youtube" },
+          ],
+        },
+        {
+          name: "username",
+          description: "Username channel/akun kamu (tanpa tanda @)",
+          type: 3,
+          required: true,
+        },
+        {
+          name: "pesan",
+          description: 'Pesan tambahan (misal: "Ayo mabar Quest Event!")',
+          type: 3,
+          required: false,
+        },
+      ],
+    },
   ];
 
   const response = await fetch(`https://discord.com/api/v10/applications/${APP_ID}/commands`, {
