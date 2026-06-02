@@ -33,7 +33,7 @@ async function getGoogleToken() {
 async function getBuilds() {
   const sheetId = process.env.SPREADSHEET_ID!;
   const token = await getGoogleToken();
-  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Sheet1!A:E`, {
+  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Build!A:E`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return [];
