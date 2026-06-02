@@ -6,6 +6,7 @@ import GlobalTab from "@/components/dashboard/GlobalTab";
 import LobbyTab from "@/components/dashboard/LobbyTab";
 import LiveTab from "@/components/dashboard/LiveTab";
 import BuildTab from "@/components/dashboard/BuildTab";
+import AnnounceTab from "@/components/dashboard/AnnounceTab";
 
 export default function Dashboard() {
   const [settings, setSettings] = useState<Record<string, string>>({});
@@ -81,6 +82,7 @@ export default function Dashboard() {
     { id: "lobby", label: "Sesi Lobby", icon: "⚔️" },
     { id: "live", label: "Share Live", icon: "🔴" },
     { id: "build", label: "Build Armorset", icon: "🛡️" },
+    { id: "announce", label: "Pengumuman", icon: "📢" },
   ];
 
   if (isLoading) {
@@ -195,6 +197,7 @@ export default function Dashboard() {
             {activeTab === "lobby" && <LobbyTab settings={settings} handleChange={handleChange} />}
             {activeTab === "live" && <LiveTab settings={settings} handleChange={handleChange} />}
             {activeTab === "build" && <BuildTab settings={settings} handleChange={handleChange} />}
+            {activeTab === "announce" && <AnnounceTab showToast={showToast} />}
           </div>
         </div>
       </main>
