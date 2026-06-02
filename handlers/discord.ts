@@ -19,6 +19,9 @@ export async function handleCommands(body: any) {
   const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN!;
 
   if (commandName === "create-lobby") {
+    // 1. Ambil pengaturan dari Google Sheets
+    const config = await getSettings();
+
     const rows = await getSheetData("Lobby");
     let hasActiveLobby = false;
 
@@ -31,9 +34,12 @@ export async function handleCommands(body: any) {
     }
 
     if (hasActiveLobby) {
+      // Gunakan pesan error dinamis dari Sheet (fallback ke pesan default jika kosong)
+      const activeError = config["msg_lobby_active_error"] || "⚠️ **Gagal:** Kamu masih memiliki sesi lobi mabar yang sedang aktif! Silakan tutup lobi sebelumnya dengan `/close-lobby` sebelum membuat yang baru.";
+
       return NextResponse.json({
         type: 4,
-        data: { flags: 64, content: "⚠️ **Gagal:** Kamu masih memiliki sesi lobi mabar yang sedang aktif! Silakan tutup lobi sebelumnya dengan `/close-lobby` sebelum membuat yang baru." },
+        data: { flags: 64, content: activeError },
       });
     }
 
@@ -45,21 +51,32 @@ export async function handleCommands(body: any) {
     const rawTimestampString = Date.now().toString();
     const displayTimeISO = new Date().toISOString();
 
-    const mentionTarget = process.env.HUNTER_ROLE_ID ? `<@&${process.env.HUNTER_ROLE_ID}>` : "@here";
+    // 2. Siapkan data dinamis untuk Embed & Pesan
+    const roleMention = config["role_mention"] || "@here";
+
+    // Replace {mention} dengan role mention asli
+    const lobbyContent = (config["msg_lobby_create_content"] || `📢 {mention} Bersiap! Ada sesi mabar baru dibuka!`).replace("{mention}", roleMention);
+
+    const lobbyTitle = config["msg_lobby_create_title"] || "⚔️ Sesi Lobi Monster Hunter Aktif!";
+
+    // Replace {username} dengan nama pembuat lobi
+    const lobbyDesc = (config["msg_lobby_create_desc"] || `Lobi baru saja dibuat oleh **@{username}**. Yuk merapat!`).replace("{username}", username);
+
+    const lobbyFooter = config["msg_lobby_footer"] || "Sesi ini akan otomatis ditutup dalam 6 jam. Gunakan /close-lobby jika sudah selesai.";
 
     const publicPayload = {
-      content: `📢 ${mentionTarget} Bersiap! Ada sesi mabar baru dibuka!`,
+      content: lobbyContent,
       embeds: [
         {
-          title: "⚔️ Sesi Lobi Monster Hunter Aktif!",
-          description: `Lobi baru saja dibuat oleh **@${username}**. Yuk merapat!`,
+          title: lobbyTitle,
+          description: lobbyDesc,
           color: 0x00ff00,
           fields: [
             { name: "Lobby ID", value: `\`${lobbyId}\``, inline: true },
             { name: "Password", value: `\`${password}\``, inline: true },
             { name: "Catatan Sesi", value: catatan, inline: false },
           ],
-          footer: { text: "Sesi ini akan otomatis ditutup dalam 6 jam. Gunakan /close-lobby jika sudah selesai." },
+          footer: { text: lobbyFooter },
           timestamp: displayTimeISO,
         },
       ],
@@ -86,6 +103,9 @@ export async function handleCommands(body: any) {
   }
 
   if (commandName === "info-lobby") {
+    // Ambil pengaturan dari Google Sheets
+    const config = await getSettings();
+
     const rows = await getSheetData("Lobby");
     const activeFields: any[] = [];
     const now = Date.now();
@@ -116,10 +136,13 @@ export async function handleCommands(body: any) {
       }
     }
 
+    // Ambil pesan lobi kosong dari sheet
+    const emptyLobbyMsg = config["msg_lobby_empty"] || "❌ Tidak ada sesi lobi yang aktif saat ini. Silakan buat lobi baru menggunakan perintah `/create-lobby`!";
+
     const embed = {
       title: "📡 Daftar Sesi Lobi Mabar Aktif",
       color: activeFields.length > 0 ? 0x00ffff : 0xff0000,
-      description: activeFields.length > 0 ? "Berikut adalah lobi mabar yang sedang membuka lowongan slot Hunter:" : "❌ Tidak ada sesi lobi yang aktif saat ini. Silakan buat lobi baru menggunakan perintah `/create-lobby`!",
+      description: activeFields.length > 0 ? "Berikut adalah lobi mabar yang sedang membuka lowongan slot Hunter:" : emptyLobbyMsg,
       fields: activeFields,
       timestamp: new Date().toISOString(),
     };
@@ -131,6 +154,9 @@ export async function handleCommands(body: any) {
   }
 
   if (commandName === "close-lobby") {
+    // Ambil pengaturan dari Google Sheets
+    const config = await getSettings();
+
     const rows = await getSheetData("Lobby");
     let foundIndex = -1;
     let targetChannelId = "";
@@ -154,14 +180,21 @@ export async function handleCommands(body: any) {
           headers: { Authorization: `Bot ${BOT_TOKEN}` },
         });
       }
+
+      // Ambil pesan sukses dinamis (kamu bisa tambahkan key ini di sheet jika belum ada)
+      const closeSuccess = config["msg_lobby_close_success"] || "✅ Sesi lobi kamu ditutup, dan pesan pengumuman telah dihapus dari channel!";
+
       return NextResponse.json({
         type: 4,
-        data: { flags: 64, content: "✅ Sesi lobi kamu ditutup, dan pesan pengumuman telah dihapus dari channel!" },
+        data: { flags: 64, content: closeSuccess },
       });
     } else {
+      // Ambil pesan error dinamis jika tidak ada lobi (tambahkan key ini di sheet)
+      const closeError = config["msg_lobby_close_error"] || "⚠️ Kamu tidak memiliki sesi lobi aktif yang terdaftar di sistem.";
+
       return NextResponse.json({
         type: 4,
-        data: { flags: 64, content: "⚠️ Kamu tidak memiliki sesi lobi aktif yang terdaftar di sistem." },
+        data: { flags: 64, content: closeError },
       });
     }
   }
