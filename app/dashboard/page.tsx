@@ -197,7 +197,7 @@ export default function Dashboard() {
             {activeTab === "lobby" && <LobbyTab settings={settings} handleChange={handleChange} />}
             {activeTab === "live" && <LiveTab settings={settings} handleChange={handleChange} />}
             {activeTab === "build" && <BuildTab settings={settings} handleChange={handleChange} />}
-            {activeTab === "announce" && <AnnounceTab showToast={showToast} />}
+            {activeTab === "announce" && <AnnounceTab showToast={showToast} settings={settings} />}
           </div>
         </div>
       </main>
