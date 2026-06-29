@@ -195,7 +195,7 @@ export default function Dashboard() {
           <div className="max-w-3xl pb-20">
             {activeTab === "global" && <GlobalTab settings={settings} handleChange={handleChange} />}
             {activeTab === "lobby" && <LobbyTab settings={settings} handleChange={handleChange} />}
-            {activeTab === "live" && <LiveTab settings={settings} handleChange={handleChange} />}
+            {activeTab === "live" && <LiveTab handleChange={handleChange} settings={settings} />}
             {activeTab === "build" && <BuildTab settings={settings} handleChange={handleChange} />}
             {activeTab === "announce" && <AnnounceTab showToast={showToast} settings={settings} />}
           </div>

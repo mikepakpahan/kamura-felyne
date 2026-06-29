@@ -379,40 +379,48 @@ export async function handleCommands(body: any) {
     const formatText = (text: string) => {
       if (!text) return "";
       return text
-        .replace(/\{\s*mention\s*\}/gi, roleMention)
-        .replace(/\{\s*user\s*\}/gi, userMention)
-        .replace(/\{\s*username\s*\}/gi, rawUsername)
-        .replace(/\{\s*platform\s*\}/gi, platformName)
-        .replace(/\{\s*emoji\s*\}/gi, emoji)
-        .replace(/\{\s*pesan\s*\}/gi, pesan)
-        .replace(/\{\s*url\s*\}/gi, liveUrl)
-        .replace(/\\n/g, "\n");
+        .replace(/\\n/g, "\n")
+        .replace(/\{user\}/gi, userMention)
+        .replace(/\{username\}/gi, username)
+        .replace(/\{mention\}/gi, roleMention)
+        .replace(/\{platform\}/gi, platform)
+        .replace(/\{emoji\}/gi, emoji);
     };
 
-    let liveContent = config["msg_live_content"] || "📢 **{mention}, {user} lagi LIVE!**";
-    let liveTitle = config["msg_live_title"] || "{emoji} @{username} sedang Live di {platform}!";
-    let liveDesc = config["msg_live_desc"] || "**Pesan:**\n{pesan}\n\n👉 **[KLIK DI SINI UNTUK NONTON]({url})**";
+    const liveContent = formatText(config["msg_live_content"] || "📢 {mention}, {user} sedang Live di {platform}!");
+    const liveTitle = formatText(config["msg_live_title"] || "🔴 LIVE STREAM: {platform}");
+    const liveDescTemplate = formatText(config["msg_live_desc"] || "**Pesan:**\n{pesan}\n\n👉 **[KLIK DI SINI UNTUK NONTON]({url})**");
 
-    // Terapkan ke semuanya sekaligus!
-    liveContent = formatText(liveContent);
-    liveTitle = formatText(liveTitle);
-    liveDesc = formatText(liveDesc);
-    // ==========================================
+    // Ganti nilai khusus untuk Deskripsi
+    const liveDesc = liveDescTemplate.replace(/\{pesan\}/gi, pesan).replace(/\{url\}/gi, liveUrl);
 
-    const publicPayload = {
-      content: liveContent,
-      embeds: [
-        {
-          title: liveTitle,
-          description: liveDesc,
-          color: color,
-          thumbnail: { url: body.member?.user?.avatar ? `https://cdn.discordapp.com/avatars/${body.member.user.id}/${body.member.user.avatar}.png` : undefined },
-          timestamp: new Date().toISOString(),
+    // Cek Pengaturan Format (Embed atau Text Biasa)
+    const liveFormat = config["share_live_format"] || "embed";
+    let publicPayload: any = {};
+
+    if (liveFormat === "text") {
+      // JIKA FORMAT: TEKS BIASA
+      // Kita gabungkan Judul, Pesan Luar, Deskripsi, dan URL jadi satu pesan rapi
+      const plainText = `${liveContent}\n\n**${liveTitle}**\n**Pesan:** ${pesan}\n\n👉 **Link Nonton:** ${liveUrl}`;
+      publicPayload = { content: plainText };
+    } else {
+      // JIKA FORMAT: EMBED (Default)
+      const embed = {
+        title: liveTitle,
+        description: liveDesc,
+        color: platform.toLowerCase() === "youtube" ? 0xff0000 : platform.toLowerCase() === "tiktok" ? 0x000000 : 0x9146ff,
+        url: liveUrl,
+        timestamp: new Date().toISOString(),
+        author: {
+          name: `${username} is now live!`,
+          icon_url: { url: body.member?.user?.avatar ? `https://cdn.discordapp.com/avatars/${body.member.user.id}/${body.member.user.avatar}.png` : undefined },
         },
-      ],
-    };
+      };
+      publicPayload = { content: liveContent, embeds: [embed] };
+    }
 
-    await fetch(`https://discord.com/api/v10/channels/${LIVE_CHANNEL_ID}/messages`, {
+    // 5. Kirim ke Channel Live
+    await fetch(`[https://discord.com/api/v10/channels/$](https://discord.com/api/v10/channels/$){LIVE_CHANNEL_ID}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bot ${BOT_TOKEN}` },
       body: JSON.stringify(publicPayload),
@@ -420,7 +428,7 @@ export async function handleCommands(body: any) {
 
     return NextResponse.json({
       type: 4,
-      data: { flags: 64, content: `✅ Pengumuman live kamu berhasil disebarkan ke channel <#${LIVE_CHANNEL_ID}>!` },
+      data: { flags: 64, content: `✅ Berhasil membagikan stream kamu ke server!` },
     });
   }
 
