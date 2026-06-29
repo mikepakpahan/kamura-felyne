@@ -345,6 +345,10 @@ export async function handleCommands(body: any) {
     const rawUsername = options.find((opt: any) => opt.name === "username")?.value.replace("@", "") || "";
     const pesan = options.find((opt: any) => opt.name === "pesan")?.value || "Sedang live sekarang, yuk ramaikan!";
 
+    // === TANGKAP ID USER UNTUK MENTION ===
+    const userId = body.member?.user?.id || body.user?.id;
+    const userMention = userId ? `<@${userId}>` : "Hunter kita";
+
     let liveUrl = "";
     let color = 0x000000;
     let platformName = "";
@@ -370,20 +374,29 @@ export async function handleCommands(body: any) {
     // --- AMBIL PENGATURAN DARI GOOGLE SHEETS ---
     // ==========================================
     const config = await getSettings();
-
-    // 1. Ambil Role Mention (fallback ke @here kalau kosong di sheet)
     const roleMention = config["role_mention"] || "@here";
 
-    // 2. Format Pesan Konten
-    const liveContent = (config["msg_live_content"] || "📢 **{mention}, Hunter kita lagi LIVE!**").replace("{mention}", roleMention);
+    const formatText = (text: string) => {
+      if (!text) return "";
+      return text
+        .replace(/\{\s*mention\s*\}/gi, roleMention)
+        .replace(/\{\s*user\s*\}/gi, userMention)
+        .replace(/\{\s*username\s*\}/gi, rawUsername)
+        .replace(/\{\s*platform\s*\}/gi, platformName)
+        .replace(/\{\s*emoji\s*\}/gi, emoji)
+        .replace(/\{\s*pesan\s*\}/gi, pesan)
+        .replace(/\{\s*url\s*\}/gi, liveUrl)
+        .replace(/\\n/g, "\n");
+    };
 
-    // 3. Format Judul Embed
-    const liveTitle = (config["msg_live_title"] || "{emoji} @{username} sedang Live di {platform}!").replace("{emoji}", emoji).replace("{username}", username).replace("{platform}", platformName);
+    let liveContent = config["msg_live_content"] || "📢 **{mention}, {user} lagi LIVE!**";
+    let liveTitle = config["msg_live_title"] || "{emoji} @{username} sedang Live di {platform}!";
+    let liveDesc = config["msg_live_desc"] || "**Pesan:**\n{pesan}\n\n👉 **[KLIK DI SINI UNTUK NONTON]({url})**";
 
-    // 4. Format Deskripsi Embed
-    // Gunakan regex /\{url\}/g jika ingin me-replace lebih dari satu tempat di deskripsi
-    const liveDesc = (config["msg_live_desc"] || "**Pesan:**\n{pesan}\n\n👉 **[KLIK DI SINI UNTUK NONTON]({url})**").replace("{pesan}", pesan).replace(/\{url\}/g, liveUrl);
-
+    // Terapkan ke semuanya sekaligus!
+    liveContent = formatText(liveContent);
+    liveTitle = formatText(liveTitle);
+    liveDesc = formatText(liveDesc);
     // ==========================================
 
     const publicPayload = {
